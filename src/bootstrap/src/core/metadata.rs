@@ -39,12 +39,13 @@ struct Target {
 /// Collects and stores package metadata of each workspace members into `build`,
 /// by executing `cargo metadata` commands.
 pub fn build(build: &mut Build) {
+    println!("before building, build has {} crates", build.crates.len());
     for package in workspace_members(build) {
         if package.source.is_none() {
             let name = package.name;
             let mut path = PathBuf::from(package.manifest_path);
             path.pop();
-            let deps = package
+            let deps: std::collections::HashSet<_> = package
                 .dependencies
                 .into_iter()
                 .filter(|dep| dep.source.is_none())
@@ -62,6 +63,12 @@ pub fn build(build: &mut Build) {
             );
         }
     }
+    println!("build now has {} crates", build.crates.len());
+    println!("the existing paths of build: ");
+    for path in build.crate_paths.keys(){
+        println!("{}", path.display());
+    }
+    println!("---------------------------------------------------------------");
 }
 
 /// Invokes `cargo metadata` to get package metadata of each workspace member.
@@ -82,7 +89,9 @@ fn workspace_members(build: &Build) -> Vec<Package> {
             .arg("--manifest-path")
             .arg(build.src.join(manifest_path));
         let metadata_output = cargo.run_always().run_capture_stdout(build).stdout();
+        // println!("{metadata_output}");
         let Output { packages, .. } = t!(serde_json::from_str(&metadata_output));
+        println!("length of the packeges for manifest {} is {}", manifest_path, packages.len());
         packages
     };
 

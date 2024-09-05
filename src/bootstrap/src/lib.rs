@@ -279,8 +279,12 @@ impl Build {
     ///
     /// By default all build output will be placed in the current directory.
     pub fn new(mut config: Config) -> Build {
+        println!("now we are in build, we are ready to make some real changes");
+
         let src = config.src.clone();
         let out = config.out.clone();
+
+        println!("src: {}, out: {}", src.display(), out.display());
 
         #[cfg(unix)]
         // keep this consistent with the equivalent check in x.py:
@@ -298,6 +302,8 @@ impl Build {
         };
         #[cfg(not(unix))]
         let is_sudo = false;
+
+        println!("is_sudo: {is_sudo}");
 
         let omit_git_hash = config.omit_git_hash;
         let rust_info = GitInfo::new(omit_git_hash, &src);
@@ -362,6 +368,8 @@ impl Build {
                 bootstrap_out.display()
             )
         }
+
+        println!("boostrap_out: {}", bootstrap_out.display());
 
         if rust_info.is_from_tarball() && config.description.is_none() {
             config.description = Some("built from a source tarball".to_owned());
@@ -457,6 +465,8 @@ impl Build {
         let build_triple = build.out.join(build.build);
         t!(fs::create_dir_all(&build_triple));
         let host = build.out.join("host");
+        println!("the path to host is: {}", host.display());
+        println!("host will be linked to: {}", &build_triple.display());
         if host.is_symlink() {
             // Left over from a previous build; overwrite it.
             // This matters if `build.build` has changed between invocations.
@@ -589,7 +599,12 @@ impl Build {
             }
         }
 
+        for path in self.config.paths.iter() {
+            println!("path: {}", path.display());
+        }
         if !self.config.dry_run() {
+
+            println!("not dry_run");
             {
                 // We first do a dry-run. This is a sanity-check to ensure that
                 // steps don't do anything expensive in the dry-run.
@@ -597,10 +612,11 @@ impl Build {
                 let builder = builder::Builder::new(self);
                 builder.execute_cli();
             }
+            println!("this is the actual run that will do all the expensive things -----------------------------------------------------");
             self.config.dry_run = DryRun::Disabled;
             let builder = builder::Builder::new(self);
             builder.execute_cli();
-        } else {
+        } else {            
             let builder = builder::Builder::new(self);
             builder.execute_cli();
         }
@@ -860,6 +876,7 @@ impl Build {
 
     /// Returns the libdir of the snapshot compiler.
     fn rustc_snapshot_libdir(&self) -> PathBuf {
+        println!("initial_rustc {}", self.initial_rustc.display());
         self.rustc_snapshot_sysroot().join(libdir(self.config.build))
     }
 
@@ -1578,7 +1595,7 @@ Executed at: {executed_at}"#,
     /// Returns a Vec of all the dependencies of the given root crate,
     /// including transitive dependencies and the root itself. Only includes
     /// "local" crates (those in the local source tree, not from a registry).
-    fn in_tree_crates(&self, root: &str, target: Option<TargetSelection>) -> Vec<&Crate> {
+    fn in_tree_crates(&self, root: &str, target: Option<TargetSelection>) -> Vec<&Crate> {        
         let mut ret = Vec::new();
         let mut list = vec![root.to_owned()];
         let mut visited = HashSet::new();
@@ -1764,6 +1781,7 @@ Executed at: {executed_at}"#,
     }
 
     fn install(&self, src: &Path, dstdir: &Path, perms: u32) {
+        println!("install: src {} to dst {}", src.display(), dstdir.display());
         if self.config.dry_run() {
             return;
         }

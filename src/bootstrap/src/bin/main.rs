@@ -17,22 +17,27 @@ use bootstrap::{
 
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
+    for arg in args.iter() {
+        println!("{}", arg);
+    }
 
     if Flags::try_parse_verbose_help(&args) {
         return;
     }
 
     let flags = Flags::parse(&args);
+    println!("{:?}", &flags);
     let config = Config::parse(flags);
 
     let mut build_lock;
     let _build_lock_guard;
 
-    if !config.bypass_bootstrap_lock {
+    if !config.bypass_bootstrap_lock {        
         // Display PID of process holding the lock
         // PID will be stored in a lock file
         let lock_path = config.out.join("lock");
         let pid = fs::read_to_string(&lock_path).unwrap_or_default();
+        println!("boostrap_lock path: {}, pid {pid}", lock_path.display());
 
         build_lock = fd_lock::RwLock::new(t!(fs::OpenOptions::new()
             .write(true)
@@ -42,6 +47,7 @@ fn main() {
         _build_lock_guard = match build_lock.try_write() {
             Ok(mut lock) => {
                 t!(lock.write(process::id().to_string().as_ref()));
+                println!("writing a new bootstrap lock");
                 lock
             }
             err => {
@@ -57,6 +63,13 @@ fn main() {
     // check_version warnings are not printed during setup
     let changelog_suggestion =
         if matches!(config.cmd, Subcommand::Setup { .. }) { None } else { check_version(&config) };
+
+    if let Some(wtf)= &changelog_suggestion {
+        println!("change log suggestions: {wtf}");
+    }
+    else {
+        println!("we don't have chagne log suggestion");
+    }
 
     // NOTE: Since `./configure` generates a `config.toml`, distro maintainers will see the
     // changelog warning, not the `x.py setup` message.

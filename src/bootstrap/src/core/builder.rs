@@ -143,8 +143,13 @@ impl RunConfig<'_> {
     /// But it's possible (although strange) to pass something like `library std core`.
     /// Build all crates anyway, as if they hadn't passed the other args.
     pub fn make_run_crates(&self, alias: Alias) -> Vec<String> {
-        let has_alias =
-            self.paths.iter().any(|set| set.assert_single_path().path.ends_with(alias.as_str()));
+        let has_alias = self.paths.iter().any(|set| {
+            if set.assert_single_path().path.ends_with(alias.as_str()) {                
+                true
+            } else {
+                false
+            }
+        });
         if !has_alias {
             return self.cargo_crates_in_set();
         }
@@ -393,6 +398,7 @@ impl StepDescription {
         }
     }
 
+    // here, some pathsets will be excluded, but for check task, nothing will be excluded.
     fn is_excluded(&self, builder: &Builder<'_>, pathset: &PathSet) -> bool {
         if builder.config.skip.iter().any(|e| pathset.has(e, builder.kind)) {
             if !matches!(builder.config.dry_run, DryRun::SelfCheck) {
@@ -408,15 +414,21 @@ impl StepDescription {
                     pathset, self.name, builder.config.skip
                 )
             });
+            println!(
+                "{:?} not skipped for {:?} -- not in {:?}",
+                pathset, self.name, builder.config.skip
+            )
         }
         false
     }
 
     fn run(v: &[StepDescription], builder: &Builder<'_>, paths: &[PathBuf]) {
+        println!("running with {} step descriptions for paths len {}", v.len(), paths.len());
         let should_runs = v
             .iter()
             .map(|desc| (desc.should_run)(ShouldRun::new(builder, desc.kind)))
             .collect::<Vec<_>>();
+        println!("should_runs len: {}", should_runs.len());
 
         // sanity checks on rules
         for (desc, should_run) in v.iter().zip(&should_runs) {
@@ -428,8 +440,10 @@ impl StepDescription {
         }
 
         if paths.is_empty() || builder.config.include_default_paths {
+            println!("if we don't provide a path to run, we enter here");
             for (desc, should_run) in v.iter().zip(&should_runs) {
                 if desc.default && should_run.is_really_default() {
+                    println!("running {}", desc.name);
                     desc.maybe_run(builder, should_run.paths.iter().cloned().collect());
                 }
             }
@@ -454,8 +468,16 @@ impl StepDescription {
                 }
             })
             .collect();
+        
+        for path in paths.iter() {
+            println!("in builder::Run, running path: {}", path.display());
+        }
 
         remap_paths(&mut paths);
+
+        for path in paths.iter() {
+            println!("after remap_paths path: {}", path.display());
+        }
 
         // Handle all test suite paths.
         // (This is separate from the loop below to avoid having to handle multiple paths in `is_suite_path` somehow.)
@@ -473,6 +495,10 @@ impl StepDescription {
             return;
         }
 
+        for path in paths.iter() {
+            println!("after retain path: {}", path.display());
+        }
+
         let mut path_lookup: Vec<(PathBuf, bool)> =
             paths.clone().into_iter().map(|p| (p, false)).collect();
 
@@ -483,7 +509,25 @@ impl StepDescription {
 
         for (desc, should_run) in v.iter().zip(&should_runs) {
             let pathsets = should_run.pathset_for_paths_removing_matches(&mut paths, desc.kind);
-
+            println!("pathsets from {}:", desc.name);
+            for (idx, ps) in pathsets.iter().enumerate() {
+                print!("pathset {idx}: ");
+                match ps {
+                    PathSet::Set(s) => {
+                        for tp in s.iter() {
+                            print!("{}, ", tp.path.display());
+                        }
+                        println!();
+                    }
+                    PathSet::Suite(tp) => println!("{}", tp.path.display()),
+                }
+            }
+            print!("paths: ");
+            for path in paths.iter() {
+                print!("{}, ", path.display());
+            }
+            println!();
+            
             // This value is used for sorting the step execution order.
             // By default, `usize::MAX` is used as the index for steps to assign them the lowest priority.
             //
@@ -500,7 +544,18 @@ impl StepDescription {
                 }
             }
 
+            print!("lookup paths: ");
+            for (path, used) in path_lookup.iter() {
+                print!("{}: {}, ", path.display(), used);
+            }
+            println!();
+
             steps_to_run.push((closest_index, desc, pathsets));
+        }
+
+        println!("indexes of steps_to_run: ");
+        for item in steps_to_run.iter() {
+            println!("desc name: {}, {}, ", item.1.name, item.0);
         }
 
         // Sort the steps before running them to respect the CLI order.
@@ -509,6 +564,7 @@ impl StepDescription {
         // Handle all PathSets.
         for (_index, desc, pathsets) in steps_to_run {
             if !pathsets.is_empty() {
+                println!("running mayberun {}", desc.name);
                 desc.maybe_run(builder, pathsets);
             }
         }
@@ -568,6 +624,21 @@ impl<'a> ShouldRun<'a> {
         match &self.is_really_default {
             ReallyDefault::Bool(val) => *val,
             ReallyDefault::Lazy(lazy) => *lazy.deref(),
+        }
+    }
+
+    pub fn print_path_set(&self) {
+        for (idx, ps) in self.paths.iter().enumerate() {
+            print!("pathset {idx}: ");
+            match ps {
+                PathSet::Set(s) => {
+                    for tp in s.iter() {
+                        print!("{}, ", tp.path.display());
+                    }
+                    println!();
+                }
+                PathSet::Suite(tp) => println!("{}", tp.path.display()),
+            }
         }
     }
 
@@ -677,7 +748,7 @@ impl<'a> ShouldRun<'a> {
         &self,
         paths: &mut Vec<PathBuf>,
         kind: Kind,
-    ) -> Vec<PathSet> {
+    ) -> Vec<PathSet> {        
         let mut sets = vec![];
         for pathset in &self.paths {
             let subset = pathset.intersection_removing_matches(paths, kind);
@@ -1009,7 +1080,9 @@ impl<'a> Builder<'a> {
     }
 
     pub fn get_help(build: &Build, kind: Kind) -> Option<String> {
+        println!("in get_help, with kind: {:?}", &kind);
         let step_descriptions = Builder::get_step_descriptions(kind);
+        println!("step_descriptions len:{}", step_descriptions.len());
         if step_descriptions.is_empty() {
             return None;
         }
@@ -1023,9 +1096,10 @@ impl<'a> Builder<'a> {
             should_run.kind = desc.kind;
             should_run = (desc.should_run)(should_run);
         }
+        // should_run.print_path_set();
         let mut help = String::from("Available paths:\n");
         let mut add_path = |path: &Path| {
-            t!(write!(help, "    ./x.py {} {}\n", kind.as_str(), path.display()));
+            t!(write!(help, "    fuck ./x.py {} {}\n", kind.as_str(), path.display()));
         };
         for pathset in should_run.paths {
             match pathset {
@@ -1210,8 +1284,9 @@ impl<'a> Builder<'a> {
     /// Windows.
     pub fn rustc_libdir(&self, compiler: Compiler) -> PathBuf {
         if compiler.is_snapshot(self) {
+            println!("expecting branch a");
             self.rustc_snapshot_libdir()
-        } else {
+        } else {            
             match self.config.libdir_relative() {
                 Some(relative_libdir) if compiler.stage >= 1 => {
                     self.sysroot(compiler).join(relative_libdir)
@@ -1285,6 +1360,7 @@ impl<'a> Builder<'a> {
 
     /// Gets the paths to all of the compiler's codegen backends.
     fn codegen_backends(&self, compiler: Compiler) -> impl Iterator<Item = PathBuf> {
+        println!("calling codegen_backends once");
         fs::read_dir(self.sysroot_codegen_backends(compiler))
             .into_iter()
             .flatten()
@@ -1483,16 +1559,19 @@ impl<'a> Builder<'a> {
         target: TargetSelection,
         cmd_kind: Kind,
     ) -> Cargo {
+        println!("in cargo command");
         let mut cargo = self.bare_cargo(compiler, mode, target, cmd_kind);
         let out_dir = self.stage_out(compiler, mode);
 
         let mut hostflags = HostFlags::default();
-
+        println!("before codegen_backends iter");
         // Codegen backends are not yet tracked by -Zbinary-dep-depinfo,
         // so we need to explicitly clear out if they've been updated.
         for backend in self.codegen_backends(compiler) {
+            println!("having a backend: {}", backend.display());
             self.clear_if_dirty(&out_dir, &backend);
         }
+        println!("aftter codegen_backends iter");
 
         if cmd_kind == Kind::Doc {
             let my_out = match mode {
@@ -1555,6 +1634,7 @@ impl<'a> Builder<'a> {
         let maybe_sysroot = self.sysroot(compiler);
         let sysroot = if use_snapshot { self.rustc_snapshot_sysroot() } else { &maybe_sysroot };
         let libdir = self.rustc_libdir(compiler);
+        println!("sysroot: {}, libdir: {}", sysroot.display(), libdir.display());
 
         let sysroot_str = sysroot.as_os_str().to_str().expect("sysroot should be UTF-8");
         if !matches!(self.config.dry_run, DryRun::SelfCheck) {
@@ -1568,6 +1648,7 @@ impl<'a> Builder<'a> {
             }
             rustflags.env("RUSTFLAGS_NOT_BOOTSTRAP");
         } else {
+            println!("adding --cfg=bootstrap");
             if let Ok(s) = env::var("CARGOFLAGS_BOOTSTRAP") {
                 cargo.args(s.split_whitespace());
             }
@@ -2227,7 +2308,7 @@ impl<'a> Builder<'a> {
     /// needed to ensure that all dependencies are built.
     pub fn ensure<S: Step>(&'a self, step: S) -> S::Output {
         {
-            let mut stack = self.stack.borrow_mut();
+            let mut stack = self.stack.borrow_mut();            
             for stack_step in stack.iter() {
                 // should skip
                 if stack_step.downcast_ref::<S>().map_or(true, |stack_step| *stack_step != step) {
@@ -2242,10 +2323,11 @@ impl<'a> Builder<'a> {
             }
             if let Some(out) = self.cache.get(&step) {
                 self.verbose_than(1, || println!("{}c {:?}", "  ".repeat(stack.len()), step));
-
+                println!("{}c {:?}", "  ".repeat(stack.len()), step);
                 return out;
             }
             self.verbose_than(1, || println!("{}> {:?}", "  ".repeat(stack.len()), step));
+            println!("{}> {:?}", "  ".repeat(stack.len()), step);
             stack.push(Box::new(step.clone()));
         }
 
@@ -2284,6 +2366,7 @@ impl<'a> Builder<'a> {
             assert_eq!(cur_step.downcast_ref(), Some(&step));
         }
         self.verbose_than(1, || println!("{}< {:?}", "  ".repeat(self.stack.borrow().len()), step));
+        println!("{}< {:?}", "  ".repeat(self.stack.borrow().len()), step);
         self.cache.put(step, out.clone());
         out
     }
@@ -2307,7 +2390,11 @@ impl<'a> Builder<'a> {
         }
 
         // Only execute if it's supposed to run as default
-        if desc.default && should_run.is_really_default() { self.ensure(step) } else { None }
+        if desc.default && should_run.is_really_default() {
+            self.ensure(step)
+        } else {
+            None
+        }
     }
 
     /// Checks if any of the "should_run" paths is in the `Builder` paths.
@@ -2356,6 +2443,10 @@ impl<'a> Builder<'a> {
 struct Rustflags(String, TargetSelection);
 
 impl Rustflags {
+    pub fn get_flags(&self) -> &str {
+        &self.0
+    }
+
     fn new(target: TargetSelection) -> Rustflags {
         let mut ret = Rustflags(String::new(), target);
         ret.propagate_cargo_env("RUSTFLAGS");
@@ -2403,6 +2494,10 @@ pub struct HostFlags {
 }
 
 impl HostFlags {
+    pub fn get_host_flags(&self) -> impl Iterator<Item=&str> {
+        self.rustc.iter().map(|s| &s[..])
+    }
+
     const SEPARATOR: &'static str = " ";
 
     /// Adds a host rustc flag.
@@ -2430,6 +2525,42 @@ pub struct Cargo {
 }
 
 impl Cargo {
+    pub fn dump_cargo(&mut self) {
+        println!("-------------------------------dump start---------------------------------");
+        
+        let cmd = self.command.as_command_mut();
+        print!("command: {} ", cmd.get_program().to_str().unwrap());
+        for arg in cmd.get_args() {
+            print!("{} ", arg.to_str().unwrap());
+        }
+        println!();
+        
+        println!("......command envs start......");
+        for (k, v) in cmd.get_envs() {
+            match v {
+                Some(v) => println!("{}:{}, ", k.to_str().unwrap(), v.to_str().unwrap()),
+                _ => println!("{}:, ", k.to_str().unwrap())
+            }
+        }
+        println!("......command envs end......");
+        
+        println!("compiler: {:?}", &self.compiler);
+        
+        println!("target: {}", &self.target.triple);
+        
+        println!("rustflags: {}", self.rustflags.get_flags());
+        
+        println!("rustdocflags: {}", self.rustdocflags.get_flags());
+
+        print!("hostflags: ");
+        for flag in self.hostflags.get_host_flags() {
+            print!("{}, ", flag);
+        }
+        println!("");
+
+        println!("-------------------------------dump end---------------------------------");
+    }   
+
     /// Calls `Builder::cargo` and `Cargo::configure_linker` to prepare an invocation of `cargo` to be run.
     pub fn new(
         builder: &Builder<'_>,
@@ -2440,6 +2571,7 @@ impl Cargo {
         cmd_kind: Kind,
     ) -> Cargo {
         let mut cargo = builder.cargo(compiler, mode, source_type, target, cmd_kind);
+        println!("exit cargo command");
         cargo.configure_linker(builder);
         cargo
     }

@@ -49,6 +49,7 @@ pub enum LlvmBuildStatus {
 
 impl LlvmBuildStatus {
     pub fn should_build(&self) -> bool {
+        println!("in llvm should_build xxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
         match self {
             LlvmBuildStatus::AlreadyBuilt(_) => false,
             LlvmBuildStatus::ShouldBuild(_) => true,
@@ -87,6 +88,7 @@ impl LdFlags {
 /// This will return the llvm-config if it can get it (but it will not build it
 /// if not).
 pub fn prebuilt_llvm_config(builder: &Builder<'_>, target: TargetSelection) -> LlvmBuildStatus {
+    println!("in prebuilt_llvm_config xxxxxxxxxxxxxxxxxxxxxx");
     // If we have llvm submodule initialized already, sync it.
     builder.update_existing_submodule("src/llvm-project");
 
@@ -96,14 +98,17 @@ pub fn prebuilt_llvm_config(builder: &Builder<'_>, target: TargetSelection) -> L
     // custom LLVM for the build triple.
     if let Some(config) = builder.config.target_config.get(&target) {
         if let Some(ref s) = config.llvm_config {
+            println!("external llvm_config: {}", s.display());
             check_llvm_version(builder, s);
             let llvm_config = s.to_path_buf();
+            println!("{}", llvm_config.display());
             let mut llvm_cmake_dir = llvm_config.clone();
             llvm_cmake_dir.pop();
             llvm_cmake_dir.pop();
             llvm_cmake_dir.push("lib");
             llvm_cmake_dir.push("cmake");
             llvm_cmake_dir.push("llvm");
+            println!("returning from here?, {}", llvm_cmake_dir.display());
             return LlvmBuildStatus::AlreadyBuilt(LlvmResult { llvm_config, llvm_cmake_dir });
         }
     }
@@ -111,6 +116,7 @@ pub fn prebuilt_llvm_config(builder: &Builder<'_>, target: TargetSelection) -> L
     // Initialize the llvm submodule if not initialized already.
     // If submodules are disabled, this does nothing.
     builder.config.update_submodule("src/llvm-project");
+    println!("update_submodule src/llvm-project");
 
     let root = "src/llvm-project/llvm";
     let out_dir = builder.llvm_out(target);

@@ -40,7 +40,7 @@ impl Step for Std {
     type Output = ();
     const DEFAULT: bool = true;
 
-    fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
+    fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {        
         run.crate_or_deps("sysroot").path("library")
     }
 
@@ -49,7 +49,7 @@ impl Step for Std {
         run.builder.ensure(Std { target: run.target, crates, override_build_kind: None });
     }
 
-    fn run(self, builder: &Builder<'_>) {
+    fn run(self, builder: &Builder<'_>) {       
         builder.require_submodule("library/stdarch", None);
 
         let target = self.target;
@@ -63,6 +63,7 @@ impl Step for Std {
             target,
             self.override_build_kind.unwrap_or(builder.kind),
         );
+        // cargo.dump_cargo();
 
         std_cargo(builder, target, compiler.stage, &mut cargo);
         if matches!(builder.config.cmd, Subcommand::Fix { .. }) {
@@ -73,6 +74,8 @@ impl Step for Std {
         for krate in &*self.crates {
             cargo.arg("-p").arg(krate);
         }
+
+        // cargo.dump_cargo();
 
         let _guard = builder.msg_check(
             format_args!("library artifacts{}", crate_description(&self.crates)),
@@ -100,6 +103,7 @@ impl Step for Std {
         // don't run on std twice with x.py clippy
         // don't check test dependencies if we haven't built libtest
         if builder.kind == Kind::Clippy || !self.crates.iter().any(|krate| krate == "test") {
+            println!("we return from here");
             return;
         }
 
@@ -135,6 +139,7 @@ impl Step for Std {
         }
 
         let _guard = builder.msg_check("library test/bench/example targets", target);
+        println!("are we here?");
         run_cargo(
             builder,
             cargo,
@@ -190,10 +195,15 @@ impl Step for Rustc {
     const DEFAULT: bool = true;
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
-        run.crate_or_deps("rustc-main").path("compiler")
+        println!("running shouldrun of Rustc, given a ShouldRun instance, add it with the pathset of the dependent crates");
+        let sr = run.crate_or_deps("rustc-main");        
+        let sr = sr.path("compiler");        
+        // sr.print_path_set();
+        sr
     }
 
     fn make_run(run: RunConfig<'_>) {
+        println!("Rustc make_run for target {}", run.target.triple);
         let crates = run.make_run_crates(Alias::Compiler);
         run.builder.ensure(Rustc { target: run.target, crates, override_build_kind: None });
     }
@@ -204,6 +214,7 @@ impl Step for Rustc {
     /// the `compiler` targeting the `target` architecture. The artifacts
     /// created will also be linked into the sysroot directory.
     fn run(self, builder: &Builder<'_>) {
+        println!("we are here!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         let compiler = builder.compiler(builder.top_stage, builder.config.build);
         let target = self.target;
 
@@ -275,7 +286,10 @@ impl Step for CodegenBackend {
     const DEFAULT: bool = true;
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
-        run.paths(&["compiler/rustc_codegen_cranelift", "compiler/rustc_codegen_gcc"])
+        println!("in should_run of CodegenBackend");
+        let run = run.paths(&["compiler/rustc_codegen_cranelift", "compiler/rustc_codegen_gcc"]);
+        run.print_path_set();
+        run
     }
 
     fn make_run(run: RunConfig<'_>) {

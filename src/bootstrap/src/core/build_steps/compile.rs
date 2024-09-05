@@ -1588,6 +1588,7 @@ impl Step for Sysroot {
             }
         };
         let sysroot = sysroot_dir(compiler.stage);
+        println!("the computed sysroot is: {}, with_dry_run: {}, with_llvm_link_shared: {}", sysroot.display(), builder.config.dry_run(), builder.config.llvm_link_shared());
 
         builder
             .verbose(|| println!("Removing sysroot {} to avoid caching bugs", sysroot.display()));
@@ -1603,7 +1604,8 @@ impl Step for Sysroot {
         if compiler.stage == 0 {
             dist::maybe_install_llvm_target(builder, compiler.host, &sysroot);
         }
-
+        println!("stage: {}", compiler.stage);
+        // assert!(false);
         // If we're downloading a compiler from CI, we can use the same compiler for all stages other than 0.
         if builder.download_rustc() && compiler.stage != 0 {
             assert_eq!(
@@ -1695,7 +1697,7 @@ impl Step for Sysroot {
         // Unlike rust-src component, we have to handle rustc-src a bit differently.
         // When using CI rustc, we copy rustc-src component from its sysroot,
         // otherwise we handle it in a similar way what we do for rust-src above.
-        if builder.download_rustc() {
+        if builder.download_rustc() {            
             cp_rustc_component_to_ci_sysroot(
                 builder,
                 &sysroot,
@@ -1759,6 +1761,7 @@ impl Step for Assemble {
                 "Cannot obtain compiler for non-native build triple at stage 0"
             );
             // The stage 0 compiler for the build triple is always pre-built.
+            println!("The stage 0 compiler for the build triple is always pre-built");
             return target_compiler;
         }
 
@@ -1966,6 +1969,10 @@ pub fn add_to_sysroot(
     sysroot_host_dst: &Path,
     stamp: &Path,
 ) {
+    println!("in add_to_sysroot");
+    println!("sysroot_dst: {}", sysroot_dst.display());
+    println!("sysroot_host_dst: {}", sysroot_host_dst.display());
+    println!("stamp: {}", stamp.display());
     let self_contained_dst = &sysroot_dst.join("self-contained");
     t!(fs::create_dir_all(sysroot_dst));
     t!(fs::create_dir_all(sysroot_host_dst));
@@ -1989,6 +1996,7 @@ pub fn run_cargo(
     is_check: bool,
     rlib_only_metadata: bool,
 ) -> Vec<PathBuf> {
+    println!("-----------------in run_cargo-----------------------------");
     // `target_root_dir` looks like $dir/$target/release
     let target_root_dir = stamp.parent().unwrap();
     // `target_deps_dir` looks like $dir/$target/release/deps
@@ -2001,12 +2009,18 @@ pub fn run_cargo(
         .unwrap() // chop off `$target`
         .join(target_root_dir.file_name().unwrap());
 
+    println!("target_root_dir: {}", target_root_dir.display());
+    println!("target_deps_dir: {}", target_deps_dir.display());
+    println!("host_root_dir: {}", host_root_dir.display());
+
+
     // Spawn Cargo slurping up its JSON output. We'll start building up the
     // `deps` array of all files it generated along with a `toplevel` array of
     // files we need to probe for later.
     let mut deps = Vec::new();
     let mut toplevel = Vec::new();
     let ok = stream_cargo(builder, cargo, tail_args, &mut |msg| {
+        // println!("++++++++++++++++++++++++++in cb++++++++++++++++++++++++++++");
         let (filenames, crate_types) = match msg {
             CargoMessage::CompilerArtifact {
                 filenames,
@@ -2015,7 +2029,7 @@ pub fn run_cargo(
             } => (filenames, crate_types),
             _ => return,
         };
-        for filename in filenames {
+        for filename in filenames {            
             // Skip files like executables
             let mut keep = false;
             if filename.ends_with(".lib")
@@ -2026,6 +2040,7 @@ pub fn run_cargo(
                 // Always keep native libraries, rust dylibs and debuginfo
                 keep = true;
             }
+            
             if is_check && filename.ends_with(".rmeta") {
                 // During check builds we need to keep crate metadata
                 keep = true;
@@ -2048,7 +2063,9 @@ pub fn run_cargo(
                 keep |= filename.ends_with(".rlib");
             }
 
-            if !keep {
+            // println!("filename: {filename}, keep: {keep}");
+
+            if !keep {                
                 continue;
             }
 
@@ -2067,7 +2084,7 @@ pub fn run_cargo(
             // If this was output in the `deps` dir then this is a precise file
             // name (hash included) so we start tracking it.
             if filename.starts_with(&target_deps_dir) {
-                deps.push((filename.to_path_buf(), DependencyType::Target));
+                deps.push((filename.to_path_buf(), DependencyType::Target));                
                 continue;
             }
 
@@ -2089,7 +2106,20 @@ pub fn run_cargo(
 
             toplevel.push((file_stem, extension, expected_len));
         }
+        // println!("++++++++++++++++++++++++++out cb++++++++++++++++++++++++++++");
     });
+
+    println!("++++++++++++++++++++++++++deps: ++++++++++++++++++++++++++++");
+    for dep in deps.iter() {
+        println!("{}", dep.0.display());
+    }
+    println!("++++++++++++++++++++++++++deps end: ++++++++++++++++++++++++++++");
+
+    println!("++++++++++++++++++++++++++toplevel: ++++++++++++++++++++++++++++");
+    for tl in toplevel.iter() {
+        println!("{} {} {}", &tl.0, &tl.1, tl.2);
+    }
+    println!("++++++++++++++++++++++++++toplevel end: ++++++++++++++++++++++++++++");
 
     if !ok {
         crate::exit!(1);
@@ -2106,7 +2136,9 @@ pub fn run_cargo(
         .map(|e| t!(e))
         .map(|e| (e.path(), e.file_name().into_string().unwrap(), t!(e.metadata())))
         .collect::<Vec<_>>();
+
     for (prefix, extension, expected_len) in toplevel {
+        println!("this will never run, fuck fuck fuck");
         let candidates = contents.iter().filter(|&(_, filename, meta)| {
             meta.len() == expected_len
                 && filename
@@ -2144,6 +2176,8 @@ pub fn run_cargo(
         new_contents.extend(b"\0");
     }
     t!(fs::write(stamp, &new_contents));
+
+    println!("-----------------ready to exit run_cargo----------------------------- {}", stamp.display());
     deps.into_iter().map(|(d, _)| d).collect()
 }
 
@@ -2171,7 +2205,7 @@ pub fn stream_cargo(
     for arg in tail_args {
         cargo.arg(arg);
     }
-
+    println!("running: {cargo:?}");
     builder.verbose(|| println!("running: {cargo:?}"));
 
     if builder.config.dry_run() {
@@ -2186,6 +2220,7 @@ pub fn stream_cargo(
     // Spawn Cargo slurping up its JSON output. We'll start building up the
     // `deps` array of all files it generated along with a `toplevel` array of
     // files we need to probe for later.
+    println!("**************start running cargo*******************");
     let stdout = BufReader::new(child.stdout.take().unwrap());
     for line in stdout.lines() {
         let line = t!(line);
@@ -2195,12 +2230,16 @@ pub fn stream_cargo(
                     // Forward JSON to stdout.
                     println!("{line}");
                 }
+                //println!("xxxxxxxxxxxxxxx get a line from stdout xxxxxxxxxxxxxxxxxxxxx");
+                //println!("{line}");
+                //println!("xxxxxxxxxxxxxxx line ends xxxxxxxxxxxxxxxxxxxxx");
                 cb(msg)
             }
             // If this was informational, just print it out and continue
             Err(_) => println!("{line}"),
         }
     }
+    println!("**************finish running cargo*******************");
 
     // Make sure Cargo actually succeeded after we read all of its stdout.
     let status = t!(child.wait());

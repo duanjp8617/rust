@@ -1983,6 +1983,7 @@ fn install_llvm_file(
         builder.install(&t!(fs::canonicalize(source)), destination, 0o644);
 
         let full_dest = destination.join(source.file_name().unwrap());
+        println!("full_dest: {}", full_dest.display());
         if install_symlink {
             // For download-ci-llvm, also install the symlink, to match what LLVM does. Using a
             // symlink is fine here, as this is not a rustup component.
@@ -1992,9 +1993,10 @@ fn install_llvm_file(
             // projects like miri link against librustc_driver.so. We don't use a symlink, as
             // these are not allowed inside rustup components.
             let link = t!(fs::read_link(source));
+            println!("link: {}", link.display());
             let mut linker_script = t!(fs::File::create(full_dest));
             t!(write!(linker_script, "INPUT({})\n", link.display()));
-
+            println!("writing to linker_script");
             // We also want the linker script to have the same mtime as the source, otherwise it
             // can trigger rebuilds.
             let meta = t!(fs::metadata(source));
@@ -2002,7 +2004,7 @@ fn install_llvm_file(
                 t!(linker_script.set_modified(mtime));
             }
         }
-    } else {
+    } else {        
         builder.install(source, destination, 0o644);
     }
 }
@@ -2016,6 +2018,7 @@ fn maybe_install_llvm(
     dst_libdir: &Path,
     install_symlink: bool,
 ) -> bool {
+    println!("running maybe_install_llvm");
     // If the LLVM was externally provided, then we don't currently copy
     // artifacts into the sysroot. This is not necessarily the right
     // choice (in particular, it will require the LLVM dylib to be in
@@ -2051,19 +2054,23 @@ fn maybe_install_llvm(
     } else if let llvm::LlvmBuildStatus::AlreadyBuilt(llvm::LlvmResult { llvm_config, .. }) =
         llvm::prebuilt_llvm_config(builder, target)
     {
+        println!("llvm_config: {}", llvm_config.display());
         let mut cmd = command(llvm_config);
         cmd.arg("--libfiles");
         builder.verbose(|| println!("running {cmd:?}"));
         let files = cmd.run_capture_stdout(builder).stdout();
+        println!("{files}");
         let build_llvm_out = &builder.llvm_out(builder.config.build);
         let target_llvm_out = &builder.llvm_out(target);
-        for file in files.trim_end().split(' ') {
+        println!("{}, {}", build_llvm_out.display(), target_llvm_out.display());
+        for file in files.trim_end().split(' ') {            
             // If we're not using a custom LLVM, make sure we package for the target.
             let file = if let Ok(relative_path) = Path::new(file).strip_prefix(build_llvm_out) {
                 target_llvm_out.join(relative_path)
             } else {
                 PathBuf::from(file)
             };
+            println!("file: {}", file.display());
             install_llvm_file(builder, &file, dst_libdir, install_symlink);
         }
         !builder.config.dry_run()
@@ -2073,13 +2080,16 @@ fn maybe_install_llvm(
 }
 
 /// Maybe add libLLVM.so to the target lib-dir for linking.
-pub fn maybe_install_llvm_target(builder: &Builder<'_>, target: TargetSelection, sysroot: &Path) {
+pub fn maybe_install_llvm_target(builder: &Builder<'_>, target: TargetSelection, sysroot: &Path) {    
     let dst_libdir = sysroot.join("lib/rustlib").join(target).join("lib");
     // We do not need to copy LLVM files into the sysroot if it is not
     // dynamically linked; it is already included into librustc_llvm
     // statically.
     if builder.llvm_link_shared() {
         maybe_install_llvm(builder, target, &dst_libdir, false);
+    }
+    else {
+        println!("we are here");
     }
 }
 

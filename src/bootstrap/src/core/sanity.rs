@@ -216,6 +216,7 @@ than building it.
     // We're gonna build some custom C code here and there, host triples
     // also build some C++ shims for LLVM so we need a C++ compiler.
     for target in &build.targets {
+        println!("in sanitycheck: target name: {}", &target.triple);
         // On emscripten we don't actually need the C compiler to just
         // build the target artifacts, only for testing. For the sake
         // of easier bot configuration, just skip detection.

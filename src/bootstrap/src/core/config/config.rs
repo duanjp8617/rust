@@ -1247,6 +1247,8 @@ impl Config {
         mut flags: Flags,
         get_toml: impl Fn(&Path) -> Result<TomlConfig, toml::de::Error>,
     ) -> Config {
+        println!("in parse_inner");
+        println!("flags: {:?}", &flags);
         let mut config = Config::default_opts();
 
         // Set flags.
@@ -1315,6 +1317,7 @@ impl Config {
             if git_root.join("src").join("stage0").exists() {
                 config.src = git_root;
             }
+            println!("config.src: {}", &config.src.display());
         } else {
             // We're building from a tarball, not git sources.
             // We don't support pre-downloaded bootstrap in this case.
@@ -1354,6 +1357,8 @@ impl Config {
             } else {
                 toml_path.clone()
             });
+            let pbuf = config.config.as_ref().unwrap();
+            println!("the default toml config is {}", pbuf.display());
             get_toml(&toml_path).unwrap_or_else(|e| {
                 eprintln!("ERROR: Failed to parse '{}': {e}", toml_path.display());
                 exit!(2);
@@ -1396,6 +1401,9 @@ impl Config {
                 exit!(2);
             });
             toml.merge(included_toml, ReplaceOpt::IgnoreDuplicate);
+            println!("finish merging toml with {}", include_path.display());
+            println!("toml.rust.incremental: {}", toml.rust.as_ref().unwrap().incremental.unwrap());
+            println!("toml.rust.backtrace: {}", toml.rust.as_ref().unwrap().backtrace.is_none());
         }
 
         let mut override_toml = TomlConfig::default();
@@ -1430,6 +1438,7 @@ impl Config {
         toml.merge(override_toml, ReplaceOpt::Override);
 
         config.change_id = toml.change_id.inner;
+        println!("change_id:{}", config.change_id.unwrap());
 
         let Build {
             build,
@@ -1492,11 +1501,13 @@ impl Config {
         }
 
         config.initial_rustc = if let Some(rustc) = rustc {
+            println!("we should be here with {}", rustc.display());
             if !flags.skip_stage0_validation {
                 config.check_stage0_version(&rustc, "rustc");
             }
             rustc
         } else {
+            println!("instead we are here to download_beta_toolchain()");
             config.download_beta_toolchain();
             config
                 .out
@@ -1520,9 +1531,11 @@ impl Config {
                 .join("bin")
                 .join(exe("cargo", config.build))
         };
+        println!("{}, {}", config.initial_rustc.display(), config.initial_cargo.display());
 
         // NOTE: it's important this comes *after* we set `initial_rustc` just above.
         if config.dry_run() {
+            println!("here");
             let dir = config.out.join("tmp-dry-run");
             t!(fs::create_dir_all(&dir));
             config.out = dir;
@@ -1866,7 +1879,7 @@ impl Config {
 
             let asserts = llvm_assertions.unwrap_or(false);
             config.llvm_from_ci = config.parse_download_ci_llvm(download_ci_llvm, asserts);
-
+            println!("{}", config.llvm_from_ci);
             if config.llvm_from_ci {
                 let warn = |option: &str| {
                     println!(
@@ -1909,6 +1922,8 @@ impl Config {
                 check_ci_llvm!(clang);
                 check_ci_llvm!(build_config);
                 check_ci_llvm!(plugins);
+
+                println!("none of the above assertions are triggered");
             }
 
             // NOTE: can never be hit when downloading from CI, since we call `check_ci_llvm!(thin_lto)` above.
@@ -1923,6 +1938,7 @@ impl Config {
         }
 
         if let Some(t) = toml.target {
+            println!("wtffffffffffffffffffffffffffffffffffff?");
             for (triple, cfg) in t {
                 let mut target = Target::from_triple(&triple);
 
@@ -1996,6 +2012,7 @@ impl Config {
         }
 
         if config.llvm_from_ci {
+            println!("before, target_config len: {}", config.target_config.len());
             let triple = &config.build.triple;
             let ci_llvm_bin = config.ci_llvm_root().join("bin");
             let build_target = config
@@ -2007,6 +2024,8 @@ impl Config {
             check_ci_llvm!(build_target.llvm_filecheck);
             build_target.llvm_config = Some(ci_llvm_bin.join(exe("llvm-config", config.build)));
             build_target.llvm_filecheck = Some(ci_llvm_bin.join(exe("FileCheck", config.build)));
+            println!("after, target_config len: {}", config.target_config.len());
+            println!("target name: {}, is valid: {}", &config.build, config.target_config.get(&config.build).is_some());
         }
 
         if let Some(dist) = toml.dist {
@@ -2027,6 +2046,7 @@ impl Config {
         }
 
         if let Some(r) = rustfmt {
+            println!("maybe configuring rustfmt");
             *config.initial_rustfmt.borrow_mut() = if r.exists() {
                 RustfmtState::SystemToolchain(r)
             } else {
@@ -2529,7 +2549,7 @@ impl Config {
         // the submodule won't be checked out. Check it out now so we can build it.
         if !GitInfo::new(false, &absolute_path).is_managed_git_subrepository()
             && !helpers::dir_is_empty(&absolute_path)
-        {
+        {            
             return;
         }
 
@@ -2563,7 +2583,7 @@ impl Config {
             .unwrap_or_else(|| panic!("unexpected output `{}`", recorded));
 
         if actual_hash == checked_out_hash {
-            // already checked out
+            // already checked out            
             return;
         }
 
@@ -2737,9 +2757,9 @@ impl Config {
                 );
                 return false;
             }
-
+            println!("updating llvm submodule");
             self.update_submodule("src/llvm-project");
-
+            println!("ending updating llvm submodule");
             // Check for untracked changes in `src/llvm-project`.
             let has_changes = self
                 .last_modified_commit(&["src/llvm-project"], "download-ci-llvm", true)

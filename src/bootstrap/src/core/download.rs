@@ -550,6 +550,7 @@ impl Config {
         let host = self.build.triple;
         let bin_root = self.out.join(host).join(sysroot);
         let rustc_stamp = bin_root.join(".rustc-stamp");
+        println!("{}, {}, {}, {}, {}, {}, {}", &host, bin_root.display(), rustc_stamp.display(), version, sysroot, stamp_key, extra_components[0]);
 
         if !bin_root.join("bin").join(exe("rustc", self.build)).exists()
             || program_out_of_date(&rustc_stamp, stamp_key)
@@ -585,6 +586,7 @@ impl Config {
 
             t!(fs::write(rustc_stamp, stamp_key));
         }
+        println!("luckily, the downloaded toolchain will not be downloaded again");
     }
 
     /// Download a single component of a CI-built toolchain (not necessarily a published nightly).

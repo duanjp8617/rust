@@ -62,6 +62,7 @@ fn cc2ar(cc: &Path, target: TargetSelection) -> Option<PathBuf> {
 
 fn new_cc_build(build: &Build, target: TargetSelection) -> cc::Build {
     let mut cfg = cc::Build::new();
+    println!("cc_detect::new_cc_build: {}, {}", &target.triple, &build.build.triple);
     cfg.cargo_metadata(false)
         .opt_level(2)
         .warnings(false)
@@ -87,6 +88,7 @@ fn new_cc_build(build: &Build, target: TargetSelection) -> cc::Build {
 }
 
 pub fn find(build: &Build) {
+    println!("find compilers");
     // For all targets we're going to need a C compiler for building some shims
     // and such as well as for being a linker for Rust code.
     let targets = build
@@ -97,6 +99,7 @@ pub fn find(build: &Build) {
         .chain(iter::once(build.build))
         .collect::<HashSet<_>>();
     for target in targets.into_iter() {
+        println!("cc_detect::find: {target}");
         find_target(build, target);
     }
 }
