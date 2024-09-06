@@ -2152,6 +2152,7 @@ impl Config {
             | Subcommand::Suggest { .. }
             | Subcommand::Vendor { .. } => flags.stage.unwrap_or(0),
         };
+        println!("config.stage: {}", config.stage);
 
         // CI should always run stage 2 builds, unless it specifically states otherwise
         #[cfg(not(test))]

@@ -201,8 +201,9 @@ impl Step for Std {
 
         let mut target_deps = builder.ensure(StartupObjects { compiler, target });
 
-        let compiler_to_use = builder.compiler_for(compiler.stage, compiler.host, target);
+        let compiler_to_use = builder.compiler_for(compiler.stage, compiler.host, target);        
         if compiler_to_use != compiler {
+            println!("compiler_to_use is not compiler");
             builder.ensure(Std::new(compiler_to_use, target));
             let msg = if compiler_to_use.host == target {
                 format!(
@@ -226,11 +227,15 @@ impl Step for Std {
         }
 
         target_deps.extend(self.copy_extra_objects(builder, &compiler, target));
+        println!("target_deps for compiling std: ");
+        for dep in target_deps.iter() {
+            println!("{}", dep.0.display());
+        }
 
         // The LLD wrappers and `rust-lld` are self-contained linking components that can be
         // necessary to link the stdlib on some targets. We'll also need to copy these binaries to
         // the `stage0-sysroot` to ensure the linker is found when bootstrapping on such a target.
-        if compiler.stage == 0 && compiler.host == builder.config.build {
+        if compiler.stage == 0 && compiler.host == builder.config.build {            
             // We want to copy the host `bin` folder within the `rustlib` folder in the sysroot.
             let src_sysroot_bin = builder
                 .rustc_snapshot_sysroot()
@@ -245,7 +250,6 @@ impl Step for Std {
                 builder.cp_link_r(&src_sysroot_bin, &target_sysroot_bin);
             }
         }
-
         // We build a sysroot for mir-opt tests using the same trick that Miri does: A check build
         // with -Zalways-encode-mir. This frees us from the need to have a target linker, and the
         // fact that this is a check build integrates nicely with run_cargo.
@@ -357,6 +361,8 @@ fn copy_third_party_objects(
             copy_llvm_libunwind(builder, target, &builder.sysroot_libdir(*compiler, target));
         target_deps.push((libunwind_path, DependencyType::Target));
     }
+
+    println!("I don't think copy_third_paty_objects will do anything");
 
     target_deps
 }
@@ -1767,6 +1773,7 @@ impl Step for Assemble {
 
         // If we're downloading a compiler from CI, we can use the same compiler for all stages other than 0.
         if builder.download_rustc() {
+            println!("we are not downloading rustc");
             builder.ensure(Std::new(target_compiler, target_compiler.host));
             let sysroot =
                 builder.ensure(Sysroot { compiler: target_compiler, force_recompile: false });
@@ -2138,13 +2145,19 @@ pub fn run_cargo(
         .collect::<Vec<_>>();
 
     for (prefix, extension, expected_len) in toplevel {
-        println!("this will never run, fuck fuck fuck");
+        println!("working on toplevel: {}", prefix);
         let candidates = contents.iter().filter(|&(_, filename, meta)| {
-            meta.len() == expected_len
+            if meta.len() == expected_len
                 && filename
                     .strip_prefix(&prefix[..])
                     .map(|s| s.starts_with('-') && s.ends_with(&extension[..]))
-                    .unwrap_or(false)
+                    .unwrap_or(false) {
+                        println!("find filename {} with meta {:?}", filename, meta);
+                        true
+                    }
+                    else {
+                        false
+                    }
         });
         let max = candidates.max_by_key(|&(_, _, metadata)| {
             metadata.modified().expect("mtime should be available on all relevant OSes")
@@ -2157,6 +2170,7 @@ pub fn run_cargo(
             let candidate = format!("{path_to_add}.lib");
             let candidate = PathBuf::from(candidate);
             if candidate.exists() {
+                println!("candidate {} exists", candidate.display());
                 deps.push((candidate, DependencyType::Target));
             }
         }

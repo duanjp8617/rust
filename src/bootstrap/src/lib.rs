@@ -615,6 +615,7 @@ impl Build {
             println!("this is the actual run that will do all the expensive things -----------------------------------------------------");
             self.config.dry_run = DryRun::Disabled;
             let builder = builder::Builder::new(self);
+            println!("in the actual run, builder's top_stage is: {}", builder.top_stage);
             builder.execute_cli();
         } else {            
             let builder = builder::Builder::new(self);
